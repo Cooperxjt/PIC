@@ -1,4 +1,0 @@
-cpcDataset 用于测试，返回一个 csv 文件中所有图片，及其裁剪的排序情况
-cpcDataset_pic 在上面的基础上，补充了一种图片的变换方式，适用于个人特征网络
-picDataset_cpc_best 取出一个用户的所有图片的最好四个裁剪结果
-picDataset_cpc_all 取出一个用户的，所有图片
