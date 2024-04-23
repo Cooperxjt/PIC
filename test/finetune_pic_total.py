@@ -313,7 +313,7 @@ if __name__ == '__main__':
     parser.add_argument('--per', default=True,
                         help='是否开启个性化分支')
     parser.add_argument('--attention', default=True,
-                        help='是否开启注意力机制')
+                        help='是否开启attention机制')
     args = parser.parse_args()
 
     cuda = True if torch.cuda.is_available() else False
