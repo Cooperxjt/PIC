@@ -50,7 +50,7 @@ def calculate_averages(results):
     num_users = len(results)
 
     # 计算平均值
-    avg_acc4_5 = [x / num_users for x in total_acc4_5]
+    avg_acc4_5 = [x / num_users * 100 for x in total_acc4_5]
     avg_acc4_10 = [x / num_users for x in total_acc4_10]
     avg_wacc4_5 = [x / num_users for x in total_wacc4_5]
     avg_wacc4_10 = [x / num_users for x in total_wacc4_10]
