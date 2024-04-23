@@ -1,0 +1,2 @@
+picDataset_cpc_best 构建了单独的文件夹，每个用户四张最好的图片
+picDataset_cpc 每个用户的图片单独构成序列，返回一个用户的所有图片
