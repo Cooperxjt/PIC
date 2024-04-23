@@ -4,6 +4,8 @@ __pycache__/
 *.pth
 other
 *.tar
-datasets
+datasets/csv_total
+datasets/prior
+datasets/finetune
 runs
 weights
