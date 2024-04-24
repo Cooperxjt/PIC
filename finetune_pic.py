@@ -324,7 +324,7 @@ if __name__ == '__main__':
     N = args.N
 
     # 加载网络
-    model_dir = '/home/zhangshuo/pic/prior/weights/2024-04-22_23_04_14.pth'
+    model_dir = 'weights/prior/2024-04-24_14_03_23.pth'
 
     print('模型加载：' + model_dir)
 
@@ -335,13 +335,13 @@ if __name__ == '__main__':
     per = args.per
     attention = args.attention
 
-    for user_name in tqdm(os.listdir('/home/zhangshuo/pic/datasets/test/total')):
+    for user_name in tqdm(os.listdir('datasets/finetune/total')):
 
         # 对一个用户提取其图片
         user_name = user_name[:-4]
-        csv_file_train = '/home/zhangshuo/pic/datasets/test/' + str(N) + '/train/' + \
+        csv_file_train = 'datasets/finetune/' + str(N) + '/train/' + \
             user_name + '_train.csv'
-        csv_file_val = '/home/zhangshuo/pic/datasets/test/' + str(N) + '/val/' + \
+        csv_file_val = 'datasets/finetune/' + str(N) + '/val/' + \
             user_name + '_val.csv'
 
         # 用于返回图片

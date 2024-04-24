@@ -1,23 +1,18 @@
 # 在cuhk数据集上，根据每位用户的数据进行微调，并得到实验结果。
 import argparse
-import math
-import os
+import pickle
 import random
-import sys
 import warnings
-from datetime import datetime
 
 import numpy as np
 import torch
 import torch.optim as optim
 import torch.utils.data as data
-from scipy.stats import pearsonr, spearmanr
 from torch.autograd import Variable
-from torchvision import transforms
 from tqdm import tqdm
 
-from dataloader.prior_cpc import CPCDataset_pic
-from models.finetune_model import build_crop_model
+from dataloader.finetune_cuhk_datasets import CUHKDataset_pic
+from models.finetune_cuhk_model import build_crop_model
 from tools.m_Loss import loss_m
 
 # 忽略特定的 UserWarning
@@ -25,128 +20,164 @@ warnings.filterwarnings("ignore", category=UserWarning,
                         message="The default behavior for interpolate/upsample with float scale_factor changed in 1.6.0*")
 
 
+def get_pdefined_anchors(anchor_file):
+    anchors = pickle.load(open(anchor_file, 'rb'), encoding='bytes')
+    anchors = np.array(anchors)
+
+    return anchors
+
+
+def compute_iou_and_disp(gt_crop, pre_crop, im_w, im_h):
+    """'
+    :param gt_crop: [[x1,y1,x2,y2]]
+    :param pre_crop: [[x1,y1,x2,y2]]
+    :return:
+    """
+    gt_crop = gt_crop[gt_crop[:, 0] >= 0]
+    zero_t = torch.zeros(gt_crop.shape[0])
+    over_x1 = torch.maximum(gt_crop[:, 0], pre_crop[:, 0])
+    over_y1 = torch.maximum(gt_crop[:, 1], pre_crop[:, 1])
+    over_x2 = torch.minimum(gt_crop[:, 2], pre_crop[:, 2])
+    over_y2 = torch.minimum(gt_crop[:, 3], pre_crop[:, 3])
+    over_w = torch.maximum(zero_t, over_x2 - over_x1)
+    over_h = torch.maximum(zero_t, over_y2 - over_y1)
+    inter = over_w * over_h
+    area1 = (gt_crop[:, 2] - gt_crop[:, 0]) * (gt_crop[:, 3] - gt_crop[:, 1])
+    area2 = (pre_crop[:, 2] - pre_crop[:, 0]) * \
+        (pre_crop[:, 3] - pre_crop[:, 1])
+    union = area1 + area2 - inter
+    iou = inter / union
+    disp = (
+        torch.abs(gt_crop[:, 0] - pre_crop[:, 0])
+        + torch.abs(gt_crop[:, 2] - pre_crop[:, 2])
+    ) / im_w + (
+        torch.abs(gt_crop[:, 1] - pre_crop[:, 1])
+        + torch.abs(gt_crop[:, 3] - pre_crop[:, 3])
+    ) / im_h
+    iou_idx = torch.argmax(iou, dim=-1)
+    dis_idx = torch.argmin(disp, dim=-1)
+    index = dis_idx if (iou[iou_idx] == iou[dis_idx]) else iou_idx
+
+    return iou[index].item(), disp[index].item()
+
+
 def test():
     net.eval()
 
-    acc4_5 = []
-    acc4_10 = []
-    wacc4_5 = []
-    wacc4_10 = []
-    srcc = []
-    pcc = []
+    total_iou = 0
+    total_disp = 0
 
-    img_num = len(dataloader_val)
+    for sample in tqdm(dataloader_val):
+        # 首先获取最好的裁剪结果
+        gt_crop = [
+            sample['ori_bbox']['xmin'][0], sample['ori_bbox']['ymin'][0],
+            sample['ori_bbox']['xmax'][0], sample['ori_bbox']['ymax'][0]
+        ]
 
-    for n in range(4):
-        acc4_5.append(0)
-        acc4_10.append(0)
-        wacc4_5.append(0)
-        wacc4_10.append(0)
+        best_score = float('-inf')
+        best_pred_bbox = None
 
-    for sample in dataloader_val:
-        # 构建两种不同类型的数据，分别属于通用网络和个性网络
-        image_gaic = sample['image']
-        bboxs_gaic = sample['bbox']
-        MOS = sample['MOS']
+        for batch_start in range(0, len(sample['bbox']['xmin']), 24):
+            # 限制每批处理的最大裁剪框数量为24个
+            batch_end = min(batch_start + 24, len(sample['bbox']['xmin']))
 
-        roi_gaic = []
+            if batch_end - batch_start < 24:  # 如果裁剪框数量不足24个
+                # 重复已有裁剪框填充到24个
+                repeat_count = 24 - (batch_end - batch_start)
+                indices = list(range(batch_start, batch_end)) + \
+                    [batch_start] * repeat_count  # 假设重复第一个裁剪框填充
+            else:
+                indices = list(range(batch_start, batch_end))
 
-        for idx in range(len(bboxs_gaic['xmin'])):
-            roi_gaic.append(
-                (
-                    0,
-                    bboxs_gaic['xmin'][idx], bboxs_gaic['ymin'][idx],
-                    bboxs_gaic['xmax'][idx], bboxs_gaic['ymax'][idx]
+            # 构建两种不同类型的数据，分别属于通用网络和个性网络
+            image_gaic = sample['image']
+
+            # 根据indices来选取裁剪框
+            bboxs_gaic = {
+                k: [v[idx] for idx in indices]
+                for k, v in sample['bbox'].items()
+            }
+            ori_bboxes = {
+                k: [v[idx] for idx in indices]
+                for k, v in sample['ori_bbox'].items()
+            }
+
+            MOS = sample['MOS'][batch_start:batch_end]
+            img_width = sample['img_width']
+            img_height = sample['img_height']
+
+            roi_gaic = []
+            ori_bboxes_list = []
+
+            for idx in range(len(bboxs_gaic['xmin'])):
+                roi_gaic.append(
+                    (
+                        0,
+                        bboxs_gaic['xmin'][idx], bboxs_gaic['ymin'][idx],
+                        bboxs_gaic['xmax'][idx], bboxs_gaic['ymax'][idx]
+                    )
                 )
+
+                ori_bboxes_list.append(
+                    (
+                        0,
+                        ori_bboxes['xmin'][idx], ori_bboxes['ymin'][idx],
+                        ori_bboxes['xmax'][idx], ori_bboxes['ymax'][idx]
+                    )
+                )
+
+            if cuda:
+                image_gaic = Variable(image_gaic.cuda())
+                roi_gaic = Variable(torch.Tensor(roi_gaic))
+            else:
+                image_gaic = Variable(image_gaic)
+                roi_gaic = Variable(roi_gaic)
+
+            input_gaic = {
+                'image_gaic': image_gaic,
+                'roi_gaic': roi_gaic
+            }
+
+            # 用另一种数据增强得到的适用于个性网络的图片输入
+            image_cpc = sample['cpc_image']
+
+            input_cpc = image_cpc.cuda()
+
+            out = net(
+                input_gaic, input_cpc
             )
 
-        if cuda:
-            image_gaic = Variable(image_gaic.cuda())
-            roi_gaic = Variable(torch.Tensor(roi_gaic))
-        else:
-            image_gaic = Variable(image_gaic)
-            roi_gaic = Variable(roi_gaic)
+            # 更新最高得分和对应的裁剪框
+            max_score_idx = out.argmax()
 
-        input_gaic = {
-            'image_gaic': image_gaic,
-            'roi_gaic': roi_gaic
-        }
+            if out[max_score_idx] > best_score:
+                best_score = out[max_score_idx]
+                best_pred_bbox = ori_bboxes_list[max_score_idx]
 
-        # 用另一种数据增强得到的适用于个性网络的图片输入
-        image_cpc = sample['cpc_image']
+        best_pred_bbox = torch.tensor(
+            [[x.item() for x in best_pred_bbox[1:5]]]
+        )
+        gt_crop = torch.tensor([[x.item() for x in gt_crop]])
 
-        input_cpc = image_cpc.cuda()
-
-        out = net(
-            input_gaic, input_cpc
+        iou, disp = compute_iou_and_disp(
+            gt_crop, best_pred_bbox, img_width, img_height
         )
 
-        # 打印结果
-        id_MOS = sorted(range(len(MOS)), key=lambda k: MOS[k], reverse=True)
-        id_out = sorted(range(len(out)), key=lambda k: out[k], reverse=True)
+        total_iou += iou
+        total_disp += disp
 
-        for k in range(4):
-            temp_acc_4_5 = 0.0
-            temp_acc_4_10 = 0.0
+    avg_iou = total_iou / len(dataloader_val)
+    avg_disp = total_disp / len(dataloader_val)
 
-            for j in range(k+1):
-                if MOS[id_out[j]] >= MOS[id_MOS[4]]:
-                    temp_acc_4_5 += 1.0
-                if MOS[id_out[j]] >= MOS[id_MOS[9]]:
-                    temp_acc_4_10 += 1.0
-
-            acc4_5[k] += temp_acc_4_5 / (k+1.0)
-            acc4_10[k] += temp_acc_4_10 / (k+1.0)
-
-        rank_of_returned_crop = []
-        for k in range(4):
-            rank_of_returned_crop.append(id_MOS.index(id_out[k]))
-
-        for k in range(4):
-            temp_wacc_4_5 = 0.0
-            temp_wacc_4_10 = 0.0
-            temp_rank_of_returned_crop = rank_of_returned_crop[:(k+1)]
-            temp_rank_of_returned_crop.sort()
-            for j in range(k+1):
-                if temp_rank_of_returned_crop[j] <= 4:
-                    temp_wacc_4_5 += 1.0 * \
-                        math.exp(-0.2*(temp_rank_of_returned_crop[j]-j))
-                if temp_rank_of_returned_crop[j] <= 9:
-                    temp_wacc_4_10 += 1.0 * \
-                        math.exp(-0.1*(temp_rank_of_returned_crop[j]-j))
-            wacc4_5[k] += temp_wacc_4_5 / (k+1.0)
-            wacc4_10[k] += temp_wacc_4_10 / (k+1.0)
-
-        MOS_arr = []
-        out = torch.squeeze(out).cpu().detach().numpy()
-        for k in range(len(MOS)):
-            MOS_arr.append(MOS[k].cpu().numpy()[0])
-
-        srcc.append(spearmanr(MOS_arr, out)[0])
-        pcc.append(pearsonr(MOS_arr, out)[0])
-
-    for k in range(4):
-        acc4_5[k] = acc4_5[k] / img_num
-        acc4_10[k] = acc4_10[k] / img_num
-        wacc4_5[k] = wacc4_5[k] / img_num
-        wacc4_10[k] = wacc4_10[k] / img_num
-
-    avg_srcc = sum(srcc) / img_num
-    avg_pcc = sum(pcc) / img_num
-
-    return acc4_5, acc4_10, avg_srcc, avg_pcc, wacc4_5, wacc4_10
+    return avg_iou, avg_disp
 
 
 def finetune(epoch_total):
 
     net.train()
 
-    best_acc4_5 = []
-    best_acc4_10 = []
-    best_avg_srcc = 0
-    best_avg_pcc = 0
-    best_wacc4_5 = []
-    best_wacc4_10 = []
+    best_iou = 0
+    best_disp = 10
 
     for epoch in range(0, epoch_total):
         total_loss = 0
@@ -164,7 +195,7 @@ def finetune(epoch_total):
             random_ID = list(range(0, len(bboxs_gaic['xmin'])))
             random.shuffle(random_ID)
 
-            for idx in random_ID[:64]:
+            for idx in random_ID:
                 roi_gaic.append(
                     (
                         0,
@@ -193,11 +224,6 @@ def finetune(epoch_total):
 
             input_cpc = image_cpc.cuda()
 
-            print(image_gaic.shape)
-            print(input_cpc.shape)
-
-            break
-
             out = net(
                 input_gaic, input_cpc
             )
@@ -218,17 +244,16 @@ def finetune(epoch_total):
             loss.backward()
             optimizer.step()
 
-        acc4_5, acc4_10, avg_srcc, avg_pcc, wacc4_5, wacc4_10 = test()
+        iou, disp = test()
 
-        if best_acc4_5 == [] or acc4_5[0] > best_acc4_5[0]:
-            best_acc4_5 = acc4_5
-            best_acc4_10 = acc4_10
-            best_avg_srcc = avg_srcc
-            best_avg_pcc = avg_pcc
-            best_wacc4_5 = wacc4_5
-            best_wacc4_10 = wacc4_10
+        print(f'Epoch: {epoch}, Iou: {iou}, Disp: {disp}')
 
-    return best_acc4_5, best_acc4_10, best_avg_srcc, best_avg_pcc, best_wacc4_5, best_wacc4_10
+        if best_iou == 0 or iou > best_iou:
+            best_iou = iou
+        if best_disp == 0 or disp < best_disp:
+            best_disp = disp
+
+    return best_iou, best_disp
 
 
 if __name__ == '__main__':
@@ -240,7 +265,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         description='Grid anchor based image cropping')
-    parser.add_argument('--dataset_root', default='/public/datasets/CPCDataset/images',
+    parser.add_argument('--dataset_root', default='/public/datasets/cuhk_cropping/All_Images',
                         help='Dataset root directory path')
     parser.add_argument('--base_model', default='mobilenetv2',
                         help='Pretrained base model')
@@ -289,48 +314,51 @@ if __name__ == '__main__':
     epoch_total = 20
 
     # 每位用户提供的图片数量
-    N = args.N
 
     # 加载网络
-    model_dir = '/home/zhangshuo/pic/prior/weights/2024-03-22_02_09_54.pth'
+    model_dir = 'weights/prior/2024-03-22_02_09_54.pth'
 
     print('模型加载：' + model_dir)
 
     print('epoch:' + str(epoch_total))
-    print('N=' + str(N))
 
     gen = args.gen
     per = args.per
     attention = args.attention
 
-    for user_name in tqdm(os.listdir('/home/zhangshuo/pic/datasets/test/total')):
+    anchors = get_pdefined_anchors('dataloader/pdefined_anchor.pkl')
+
+    for expert_id in range(1, 4):
 
         # 对一个用户提取其图片
-        user_name = user_name[:-4]
-        csv_file_train = '/home/zhangshuo/pic/datasets/test/' + str(N) + '/train/' + \
-            user_name + '_train.csv'
-        csv_file_val = '/home/zhangshuo/pic/datasets/test/' + str(N) + '/val/' + \
-            user_name + '_val.csv'
+        val_file = f'/public/datasets/cuhk_cropping/expert_{expert_id}_csv/expert_{expert_id}_val.csv'
+        finetune_file = f'/public/datasets/cuhk_cropping/expert_{expert_id}_csv/expert_{expert_id}_finetune.csv'
 
         # 用于返回图片
         dataloader_finetune = data.DataLoader(
-            CPCDataset_pic(
-                csv_file=csv_file_train,
+            CUHKDataset_pic(
+                csv_file=finetune_file,
                 image_size=args.image_size,
                 dataset_dir=args.dataset_root,
-                set='test'
+                set='train'
             ),
-            batch_size=args.batch_size, num_workers=args.num_workers, shuffle=False
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            shuffle=True,
+            generator=torch.Generator(device='cuda')
         )
 
         dataloader_val = data.DataLoader(
-            CPCDataset_pic(
-                csv_file=csv_file_val,
+            CUHKDataset_pic(
+                csv_file=val_file,
                 image_size=args.image_size,
                 dataset_dir=args.dataset_root,
-                set='test'
+                set='val'
             ),
-            batch_size=args.batch_size, num_workers=args.num_workers, shuffle=False
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            shuffle=False,
+            generator=torch.Generator(device='cuda')
         )
 
         net = build_crop_model(
@@ -358,8 +386,10 @@ if __name__ == '__main__':
 
         optimizer = optim.Adam(net.parameters(), lr=args.lr)
 
-        acc4_5, acc4_10, avg_srcc, avg_pcc, wacc4_5, wacc4_10 = finetune(
+        iou, disp = finetune(
             epoch_total
         )
+
+        print(f'Expert{expert_id} Iou: {iou}, Disp: {disp}')
 
     # 输出 IoU Disp

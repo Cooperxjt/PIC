@@ -319,7 +319,7 @@ if __name__ == '__main__':
     results = {}
 
     # 加载网络
-    model_dir = 'weights/pre/2024-04-22_17_20_40/130.pth'
+    model_dir = 'weights/pre/2024-04-23_14_21_09/130.pth'
 
     state_dict = torch.load(model_dir)
 
@@ -338,7 +338,7 @@ if __name__ == '__main__':
         per=per,
     )
 
-    net.load_state_dict(state_dict, strict=True)
+    net.load_state_dict(state_dict, strict=False)
 
     print('模型加载：' + model_dir)
 

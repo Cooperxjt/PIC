@@ -261,7 +261,7 @@ class persionality_crop_model_multi_scale_shared_attention(nn.Module):
 
 class persionality_crop_model_multi_scale_shared(nn.Module):
 
-    def __init__(self, alignsize=8, reddim=32, loadweight=True, model=None, downsample=4, num_classes=945):
+    def __init__(self, alignsize=8, reddim=32, loadweight=True, model=None, downsample=4, num_classes=1345):
         super(persionality_crop_model_multi_scale_shared, self).__init__()
 
         if model == 'shufflenetv2':
@@ -286,7 +286,7 @@ class persionality_crop_model_multi_scale_shared(nn.Module):
         self.FC_layers_2 = fc_layers_2(8, num_classes, alignsize)
 
         self.FC_layers_3 = nn.Conv1d(
-            in_channels=1, out_channels=1, kernel_size=40, stride=39
+            in_channels=1, out_channels=1, kernel_size=50, stride=1
         )
 
     def forward(self, data_gaic, data_cpc):
@@ -329,6 +329,7 @@ class persionality_crop_model_multi_scale_shared(nn.Module):
         red_feat = self.DimRed(cat_feat)
 
         prediction_2 = self.FC_layers_2(red_feat)
+
         # 降低维度到 24
         prediction_3 = self.FC_layers_3(
             prediction_2.squeeze().unsqueeze(0).unsqueeze(0)
@@ -356,7 +357,7 @@ def weights_init(m):
 
 def build_crop_model(alignsize=8, reddim=32, loadweight=True, model=None, downsample=4, num_classes=945, attention=False, gen=True, per=True):
 
-    if attention is True:
+    if attention:
         return persionality_crop_model_multi_scale_shared_attention(alignsize, reddim, loadweight, model, downsample, num_classes, gen, per)
     else:
         return persionality_crop_model_multi_scale_shared(alignsize, reddim, loadweight, model, downsample, num_classes)

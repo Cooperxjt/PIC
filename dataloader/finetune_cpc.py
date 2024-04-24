@@ -108,7 +108,6 @@ class CPCDataset_pic(Dataset):
             bbox = [int(x) for x in row['bbox'].strip('[]').split(',')]
             score = row['score']
             annotations_data.append({'bbox': bbox, 'score': score})
-
         sample = {'image': image, 'annotations': annotations_data}
 
         if self.transform:
@@ -126,29 +125,29 @@ class CPCDataset_pic(Dataset):
 # 使用 CustomDataset 创建 DataLoader
 
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
 
-    # 请根据您的文件路径修改以下两个参数
-    csv_file = '/home/zhangshuo/pic/datasets/csv_val/A1ARIECD8PX7OT_val.csv'
-    root_dir = '/public/datasets/CPCDataset/images'
+#     # 请根据您的文件路径修改以下两个参数
+#     csv_file = '/home/zhangshuo/pic/datasets/finetune/3/val/A1DINOR5IK1YC4_val.csv'
+#     root_dir = '/public/datasets/CPCDataset/images'
 
-    dataset = CPCDataset_pic(
-        csv_file=csv_file, dataset_dir=root_dir, image_size=256
-    )
-    data_loader = DataLoader(
-        dataset, batch_size=1,
-        shuffle=True, num_workers=0
-    )
+#     dataset = CPCDataset_pic(
+#         csv_file=csv_file, dataset_dir=root_dir, image_size=256
+#     )
+#     data_loader = DataLoader(
+#         dataset, batch_size=1,
+#         shuffle=True, num_workers=0
+#     )
 
-    for i, batch in enumerate(data_loader):
-        print(f'Batch {i+1}')
-        print(f'Images in this batch: {len(batch["image"])}')
-        print('Annotations for the first image:')
-        print(batch['bbox'])
-        print(batch['MOS'])
-        # 如果您想看到每个图像的注释，可以取消注释以下行
-        # for annotation in batch['annotations']:
-        #     print(annotation)
-        # 限制输出以避免太长的日志
-        if i == 1:  # 只迭代两个批次作为示例
-            break
+#     for i, batch in enumerate(data_loader):
+#         print(f'Batch {i+1}')
+#         print(f'Images in this batch: {len(batch["image"])}')
+#         print('Annotations for the first image:')
+#         # print(batch['bbox'])
+#         # print(batch['MOS'])
+#         # 如果您想看到每个图像的注释，可以取消注释以下行
+#         # for annotation in batch['annotations']:
+#         #     print(annotation)
+#         # 限制输出以避免太长的日志
+#         if i == 1:  # 只迭代两个批次作为示例
+#             break
