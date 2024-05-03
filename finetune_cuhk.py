@@ -20,20 +20,15 @@ warnings.filterwarnings("ignore", category=UserWarning,
                         message="The default behavior for interpolate/upsample with float scale_factor changed in 1.6.0*")
 
 
-def get_pdefined_anchors(anchor_file):
-    anchors = pickle.load(open(anchor_file, 'rb'), encoding='bytes')
-    anchors = np.array(anchors)
-
-    return anchors
-
-
 def compute_iou_and_disp(gt_crop, pre_crop, im_w, im_h):
     """'
     :param gt_crop: [[x1,y1,x2,y2]]
     :param pre_crop: [[x1,y1,x2,y2]]
     :return:
     """
+
     gt_crop = gt_crop[gt_crop[:, 0] >= 0]
+
     zero_t = torch.zeros(gt_crop.shape[0])
     over_x1 = torch.maximum(gt_crop[:, 0], pre_crop[:, 0])
     over_y1 = torch.maximum(gt_crop[:, 1], pre_crop[:, 1])
@@ -41,19 +36,25 @@ def compute_iou_and_disp(gt_crop, pre_crop, im_w, im_h):
     over_y2 = torch.minimum(gt_crop[:, 3], pre_crop[:, 3])
     over_w = torch.maximum(zero_t, over_x2 - over_x1)
     over_h = torch.maximum(zero_t, over_y2 - over_y1)
+
     inter = over_w * over_h
+
     area1 = (gt_crop[:, 2] - gt_crop[:, 0]) * (gt_crop[:, 3] - gt_crop[:, 1])
     area2 = (pre_crop[:, 2] - pre_crop[:, 0]) * \
         (pre_crop[:, 3] - pre_crop[:, 1])
+
     union = area1 + area2 - inter
     iou = inter / union
+
     disp = (
-        torch.abs(gt_crop[:, 0] - pre_crop[:, 0])
-        + torch.abs(gt_crop[:, 2] - pre_crop[:, 2])
-    ) / im_w + (
-        torch.abs(gt_crop[:, 1] - pre_crop[:, 1])
-        + torch.abs(gt_crop[:, 3] - pre_crop[:, 3])
-    ) / im_h
+        (
+            torch.abs(gt_crop[:, 0] - pre_crop[:, 0])
+            + torch.abs(gt_crop[:, 2] - pre_crop[:, 2])
+        ) / im_w + (
+            torch.abs(gt_crop[:, 1] - pre_crop[:, 1])
+            + torch.abs(gt_crop[:, 3] - pre_crop[:, 3])
+        ) / im_h) / 4
+
     iou_idx = torch.argmax(iou, dim=-1)
     dis_idx = torch.argmin(disp, dim=-1)
     index = dis_idx if (iou[iou_idx] == iou[dis_idx]) else iou_idx
@@ -179,6 +180,11 @@ def finetune(epoch_total):
     best_iou = 0
     best_disp = 10
 
+    iou, disp = test()
+
+    print(iou)
+    print(disp)
+
     for epoch in range(0, epoch_total):
         total_loss = 0
         loss = 0
@@ -189,60 +195,77 @@ def finetune(epoch_total):
             image_gaic = sample['image']
             bboxs_gaic = sample['bbox']
 
-            roi_gaic = []
-            MOS_gaic = []
+            for batch_start in range(0, len(sample['bbox']['xmin']), 24):
+                roi_gaic = []
+                MOS_gaic = []
 
-            random_ID = list(range(0, len(bboxs_gaic['xmin'])))
-            random.shuffle(random_ID)
+                # 限制每批处理的最大裁剪框数量为24个
+                batch_end = min(batch_start + 24, len(sample['bbox']['xmin']))
 
-            for idx in random_ID:
-                roi_gaic.append(
-                    (
-                        0,
-                        bboxs_gaic['xmin'][idx], bboxs_gaic['ymin'][idx],
-                        bboxs_gaic['xmax'][idx], bboxs_gaic['ymax'][idx]
+                if batch_end - batch_start < 24:  # 如果裁剪框数量不足24个
+                    # 重复已有裁剪框填充到24个
+                    repeat_count = 24 - (batch_end - batch_start)
+                    indices = list(range(batch_start, batch_end)) + \
+                        [batch_start] * repeat_count  # 假设重复第一个裁剪框填充
+                else:
+                    indices = list(range(batch_start, batch_end))
+                    # 根据indices来选取裁剪框
+                    bboxs_gaic = {
+                        k: [v[idx] for idx in indices]
+                        for k, v in sample['bbox'].items()
+                    }
+
+                random_ID = list(range(0, len(bboxs_gaic['xmin'])))
+                random.shuffle(random_ID)
+
+                for idx in random_ID:
+                    roi_gaic.append(
+                        (
+                            0,
+                            bboxs_gaic['xmin'][idx], bboxs_gaic['ymin'][idx],
+                            bboxs_gaic['xmax'][idx], bboxs_gaic['ymax'][idx]
+                        )
                     )
+
+                    MOS_gaic.append(sample['MOS'][idx])
+
+                if cuda:
+                    image_gaic = Variable(image_gaic.cuda())
+                    roi_gaic = Variable(torch.Tensor(roi_gaic))
+                    MOS_gaic = torch.Tensor(MOS_gaic)
+                else:
+                    image_gaic = Variable(image_gaic)
+                    roi_gaic = Variable(roi_gaic)
+
+                input_gaic = {
+                    'image_gaic': image_gaic,
+                    'roi_gaic': roi_gaic
+                }
+
+                # 用另一种数据增强得到的适用于个性网络的图片输入
+                image_cpc = sample['cpc_image']
+
+                input_cpc = image_cpc.cuda()
+
+                out = net(
+                    input_gaic, input_cpc
                 )
 
-                MOS_gaic.append(sample['MOS'][idx])
+                loss_sort = loss_m(out, MOS_gaic).mean()
 
-            if cuda:
-                image_gaic = Variable(image_gaic.cuda())
-                roi_gaic = Variable(torch.Tensor(roi_gaic))
-                MOS_gaic = torch.Tensor(MOS_gaic)
-            else:
-                image_gaic = Variable(image_gaic)
-                roi_gaic = Variable(roi_gaic)
+                # 计算全部的 loss
+                loss_l1 = torch.nn.SmoothL1Loss(reduction='mean')(
+                    out, MOS_gaic
+                )
 
-            input_gaic = {
-                'image_gaic': image_gaic,
-                'roi_gaic': roi_gaic
-            }
+                loss = loss_l1 + 0.8 * loss_sort
 
-            # 用另一种数据增强得到的适用于个性网络的图片输入
-            image_cpc = sample['cpc_image']
+                total_loss += loss.item()
 
-            input_cpc = image_cpc.cuda()
-
-            out = net(
-                input_gaic, input_cpc
-            )
-
-            loss_sort = loss_m(out, MOS_gaic).mean()
-
-            # 计算全部的 loss
-            loss_l1 = torch.nn.SmoothL1Loss(reduction='mean')(
-                out, MOS_gaic
-            )
-
-            loss = loss_sort + 0.8*loss_l1
-
-            total_loss += loss.item()
-
-            # backprop
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+                # backprop
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
 
         iou, disp = test()
 
@@ -311,7 +334,8 @@ if __name__ == '__main__':
         torch.set_default_tensor_type('torch.FloatTensor')
 
     results = {}
-    epoch_total = 20
+    epoch_total = 50
+    n = 50
 
     # 每位用户提供的图片数量
 
@@ -319,20 +343,20 @@ if __name__ == '__main__':
     model_dir = 'weights/prior/2024-03-22_02_09_54.pth'
 
     print('模型加载：' + model_dir)
-
     print('epoch:' + str(epoch_total))
+    print('n:' + str(n))
 
     gen = args.gen
     per = args.per
     attention = args.attention
 
-    anchors = get_pdefined_anchors('dataloader/pdefined_anchor.pkl')
+    # anchors = get_pdefined_anchors('dataloader/pdefined_anchor.pkl')
 
     for expert_id in range(1, 4):
 
         # 对一个用户提取其图片
-        val_file = f'/public/datasets/cuhk_cropping/expert_{expert_id}_csv/expert_{expert_id}_val.csv'
-        finetune_file = f'/public/datasets/cuhk_cropping/expert_{expert_id}_csv/expert_{expert_id}_finetune.csv'
+        val_file = f'/public/datasets/cuhk_cropping/expert_{expert_id}_csv/{n}/expert_{expert_id}_val.csv'
+        finetune_file = f'/public/datasets/cuhk_cropping/expert_{expert_id}_csv/{n}/expert_{expert_id}_finetune.csv'
 
         # 用于返回图片
         dataloader_finetune = data.DataLoader(

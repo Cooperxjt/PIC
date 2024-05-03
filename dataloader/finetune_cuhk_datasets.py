@@ -6,12 +6,15 @@ import random
 import cv2
 import numpy as np
 import pandas as pd
+import torch
+import torch.utils.data as data
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 
 RGB_MEAN = (0.485, 0.456, 0.406)
 RGB_STD = (0.229, 0.224, 0.225)
+
 
 cpc_transformfunction = transforms.Compose([
     transforms.Resize((256, 256)),  # 调整图像大小至256x256
@@ -28,6 +31,49 @@ cpc_transformfunction = transforms.Compose([
             0.229, 0.224, 0.225]
     )  # 标准化
 ])
+
+
+def compute_iou_and_disp(gt_crop, pre_crop, im_w, im_h):
+    """'
+    :param gt_crop: [[x1,y1,x2,y2]]
+    :param pre_crop: [[x1,y1,x2,y2]]
+    :return:
+    """
+
+    gt_crop = gt_crop[gt_crop[:, 0] >= 0]
+
+    zero_t = torch.zeros(gt_crop.shape[0])
+    over_x1 = torch.maximum(gt_crop[:, 0], pre_crop[:, 0])
+    over_y1 = torch.maximum(gt_crop[:, 1], pre_crop[:, 1])
+    over_x2 = torch.minimum(gt_crop[:, 2], pre_crop[:, 2])
+    over_y2 = torch.minimum(gt_crop[:, 3], pre_crop[:, 3])
+    over_w = torch.maximum(zero_t, over_x2 - over_x1)
+    over_h = torch.maximum(zero_t, over_y2 - over_y1)
+
+    inter = over_w * over_h
+
+    area1 = (gt_crop[:, 2] - gt_crop[:, 0]) * (gt_crop[:, 3] - gt_crop[:, 1])
+    area2 = (pre_crop[:, 2] - pre_crop[:, 0]) * \
+        (pre_crop[:, 3] - pre_crop[:, 1])
+
+    union = area1 + area2 - inter
+    iou = inter / union
+
+    disp = ((
+        torch.abs(gt_crop[:, 0] - pre_crop[:, 0])
+        + torch.abs(gt_crop[:, 2] - pre_crop[:, 2])
+    ) / im_w + (
+        torch.abs(gt_crop[:, 1] - pre_crop[:, 1])
+        + torch.abs(gt_crop[:, 3] - pre_crop[:, 3])
+    ) / im_h) / 4
+
+    iou_idx = torch.argmax(iou, dim=-1)
+
+    dis_idx = torch.argmin(disp, dim=-1)
+
+    index = dis_idx if (iou[iou_idx] == iou[dis_idx]) else iou_idx
+
+    return iou[index].item(), disp[index].item()
 
 
 class TransformFunction(object):
@@ -118,16 +164,35 @@ class CUHKDataset_pic(Dataset):
         self.image_size = image_size
         self.cpc_tranform = cpc_transformfunction
         self.set = set
-        self.anchors = self.get_pdefined_anchors(
-            'dataloader/pdefined_anchor.pkl')
-        if self.set == 'train':
-            np.random.shuffle(self.anchors)
+        # 决定了生成裁剪框的方式，选择预定义还是生成函数
+        self.generate_anchors = True
+        # self.anchors = self.get_pdefined_anchors('dataloader/pdefined_anchor_6.pkl')
 
     def get_pdefined_anchors(self, anchor_file):
         anchors = pickle.load(open(anchor_file, 'rb'), encoding='bytes')
         anchors = np.array(anchors)
 
         return anchors
+
+    def generate_crops(self, width, height):
+        # 来自vfn的生成裁剪框方式
+        crops = []
+
+        for scale in range(5, 10):
+            scale /= 10
+            w, h = width * scale, height * scale
+            dw, dh = width - w, height - h
+            dw, dh = dw / 10, dh / 10
+
+            for w_idx in range(5):
+                for h_idx in range(5):
+                    # x, y = w_idx * dw, h_idx * dh
+                    # crops.append([int(x), int(y), int(w), int(h)])
+                    x1, y1 = w_idx * dw, h_idx * dh
+                    x2, y2 = x1 + w, y1 + h  # 计算右下角坐标
+                    crops.append([int(x1), int(y1), int(x2), int(y2)])
+
+        return crops
 
     def __len__(self):
         return len(self.annotations_frame)
@@ -137,6 +202,7 @@ class CUHKDataset_pic(Dataset):
             self.dataset_dir,
             list(self.annotations_frame['Image'])[idx].split('\\')[1]
         )
+
         image = cv2.imread(img_name)
 
         crop_box = list(self.annotations_frame['Crop Box'])[idx]
@@ -144,37 +210,55 @@ class CUHKDataset_pic(Dataset):
         # 解析 原始的bbox 和 score，将其置为最高分。
         annotations_data = []
 
-        bbox = [int(x) for x in crop_box.split()]
-        score = 4
-        annotations_data.append({'bbox': bbox, 'score': score})
+        gt_crop = [int(x) for x in crop_box.split()]
+        score = 10
+
+        annotations_data.append({'bbox': gt_crop, 'score': score})
 
         img_height = image.shape[0]
         img_width = image.shape[1]
 
         # 当为训练模式，添加一些新的裁剪框，并置为零分。
-        if self.set == 'train':
+        if self.generate_anchors:
 
-            for i in range(23):
-                bbox = [float(x) for x in self.anchors[i][:4]]
+            bboxes = self.generate_crops(img_width, img_height)
 
-                x1 = bbox[0] * img_width
-                y1 = bbox[1] * img_height
-                x2 = bbox[2] * img_width
-                y2 = bbox[3] * img_height
+            if self.set == 'train':
+                for bbox in bboxes:
 
-                bbox[0] = x1
-                bbox[1] = y1
-                bbox[2] = x2
-                bbox[3] = y2
+                    pre_bbox = torch.tensor([[x for x in bbox]])
+                    gt_bbox = torch.tensor([[x for x in gt_crop]])
+                    iou, disp = compute_iou_and_disp(
+                        gt_bbox, pre_bbox, img_width, img_height)
 
-                score = 0
+                    if iou > 0.9:
+                        score = 3
+                    elif iou > 0.8 and iou <= 0.9:
+                        score = 2
+                    else:
+                        score = 0
 
-                annotations_data.append({'bbox': bbox, 'score': score})
+                    annotations_data.append({'bbox': bbox, 'score': score})
 
-        elif self.set == 'val':
+                random.shuffle(annotations_data)
+
+            elif self.set == 'val':
+
+                for bbox in bboxes:
+
+                    pre_bbox = torch.tensor([[x for x in bbox]])
+                    gt_bbox = torch.tensor([[x for x in gt_crop]])
+
+                    score = 0
+
+                    annotations_data.append({'bbox': bbox, 'score': score})
+
+        else:
+            if self.set == 'train':
+                np.random.shuffle(self.anchors)
+
             for i in range(len(self.anchors)):
                 bbox = [float(x) for x in self.anchors[i][:4]]
-
                 x1 = bbox[0] * img_width
                 y1 = bbox[1] * img_height
                 x2 = bbox[2] * img_width
@@ -185,7 +269,21 @@ class CUHKDataset_pic(Dataset):
                 bbox[2] = x2
                 bbox[3] = y2
 
-                score = 0
+                if self.set == 'train':
+                    pre_bbox = torch.tensor([[x for x in bbox]])
+                    gt_bbox = torch.tensor([[x for x in gt_crop]])
+                    iou, disp = compute_iou_and_disp(
+                        gt_bbox, pre_bbox, img_width, img_height)
+
+                    if iou > 0.8 and disp < 0.1:
+                        score = 3
+
+                    elif iou > 0.8 and disp < 0.15:
+                        score = 2
+                    else:
+                        score = -1
+                elif self.set == 'val':
+                    score = 0
 
                 annotations_data.append({'bbox': bbox, 'score': score})
 
@@ -210,25 +308,33 @@ class CUHKDataset_pic(Dataset):
 
 if __name__ == '__main__':
 
-    # 请根据您的文件路径修改以下两个参数
-    csv_file = '/public/datasets/cuhk_cropping/expert_1_csv/expert_1_crops.csv'
-    dataset_dir = '/public/datasets/cuhk_cropping/All_Images'
+    expert_id = 1
+    n = 10
 
-    dataset = CUHKDataset_pic(
-        csv_file=csv_file, dataset_dir=dataset_dir, image_size=256, set='val'
+    # 对一个用户提取其图片
+    val_file = f'/public/datasets/cuhk_cropping/expert_{expert_id}_csv/{n}/expert_{expert_id}_val.csv'
+    finetune_file = f'/public/datasets/cuhk_cropping/expert_{expert_id}_csv/{n}/expert_{expert_id}_finetune.csv'
+
+    # 用于返回图片
+    dataloader_finetune = data.DataLoader(
+        CUHKDataset_pic(
+            csv_file=finetune_file,
+            image_size=256,
+            dataset_dir='/public/datasets/cuhk_cropping/All_Images',
+            set='train'
+        ),
+        batch_size=1,
+        num_workers=0,
+        shuffle=True,
     )
 
-    data_loader = DataLoader(
-        dataset, batch_size=1,
-        shuffle=False,
-        num_workers=0
-    )
-
-    for i, batch in enumerate(data_loader):
-        print(f'Batch {i+1}')
-        print(f'Images in this batch: {len(batch["image"])}')
-        print('Annotations for the first image:')
-        print(batch['bbox'])
-        print(batch['MOS'])
-        if i == 0:  # 只迭代两个批次作为示例
-            break
+    for i, batch in enumerate(dataloader_finetune):
+        print(i)
+        print('\n')
+        # print(f'Batch {i+1}')
+        # print(f'Images in this batch: {len(batch["image"])}')
+        # print('Annotations for the first image:')
+        # print(batch['bbox'])
+        # print(batch['MOS'])
+        # if i == 0:  # 只迭代两个批次作为示例
+        #     break
