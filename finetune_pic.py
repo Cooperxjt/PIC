@@ -3,6 +3,7 @@ import math
 import os
 import random
 import warnings
+from datetime import datetime
 
 import numpy as np
 import torch
@@ -122,6 +123,7 @@ def test():
         id_MOS = sorted(range(len(MOS)), key=lambda k: MOS[k], reverse=True)
         id_out = sorted(range(len(out)), key=lambda k: out[k], reverse=True)
 
+        # 计算 Acc
         for k in range(4):
             temp_acc_4_5 = 0.0
             temp_acc_4_10 = 0.0
@@ -176,8 +178,6 @@ def test():
 
 def finetune(epoch_total):
 
-    net.train()
-
     best_acc4_5 = []
     best_acc4_10 = []
     best_avg_srcc = 0
@@ -186,11 +186,15 @@ def finetune(epoch_total):
     best_wacc4_10 = []
 
     for epoch in range(0, epoch_total):
+
+        net.train()
+
         total_loss = 0
         loss = 0
         # 创建迭代器
 
         for sample in dataloader_finetune:
+
             # 构建两种不同类型的数据，分别属于通用网络和个性网络
             image_gaic = sample['image']
             bboxs_gaic = sample['bbox']
@@ -251,6 +255,16 @@ def finetune(epoch_total):
             optimizer.step()
 
         acc4_5, acc4_10, avg_srcc, avg_pcc, wacc4_5, wacc4_10 = test()
+
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
+
+        if not os.path.exists('user_weights/' + user_name):
+            os.makedirs('user_weights/' + user_name)
+
+        torch.save(
+            net.state_dict(), 'user_weights/' +
+            user_name + '/' + timestamp + '.pth'
+        )
 
         if best_acc4_5 == [] or acc4_5[0] > best_acc4_5[0]:
             best_acc4_5 = acc4_5
@@ -318,13 +332,13 @@ if __name__ == '__main__':
         torch.set_default_tensor_type('torch.FloatTensor')
 
     results = {}
-    epoch_total = 20
+    epoch_total = 10
 
     # 每位用户提供的图片数量
     N = args.N
 
     # 加载网络
-    model_dir = 'weights/prior/2024-04-24_14_03_23.pth'
+    model_dir = 'weights/prior/2024-05-24_21_05_21.pth'
 
     print('模型加载：' + model_dir)
 
@@ -335,13 +349,13 @@ if __name__ == '__main__':
     per = args.per
     attention = args.attention
 
-    for user_name in tqdm(os.listdir('datasets/finetune/total')):
+    for user_name in tqdm(os.listdir('datasets/finetune/2/total')):
 
         # 对一个用户提取其图片
         user_name = user_name[:-4]
-        csv_file_train = 'datasets/finetune/' + str(N) + '/train/' + \
+        csv_file_train = 'datasets/finetune/2/' + str(N) + '/train/' + \
             user_name + '_train.csv'
-        csv_file_val = 'datasets/finetune/' + str(N) + '/val/' + \
+        csv_file_val = 'datasets/finetune/2/' + str(N) + '/val/' + \
             user_name + '_val.csv'
 
         # 用于返回图片

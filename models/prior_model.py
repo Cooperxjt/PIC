@@ -131,7 +131,8 @@ def fc_layers_2(reddim=32, num_classes=1345, alignsize=8):
     )
     conv2 = nn.Sequential(
         nn.Conv2d(768, 128, kernel_size=1),
-        nn.BatchNorm2d(128), nn.ReLU(inplace=True)
+        nn.BatchNorm2d(128),
+        nn.ReLU(inplace=True)
     )
     dropout = nn.Dropout(p=0.5)
     conv3 = nn.Conv2d(128, num_classes, kernel_size=1)
@@ -282,8 +283,12 @@ class persionality_crop_model_multi_scale_shared(nn.Module):
         self.FC_layers_1 = fc_layers_1(reddim*2, alignsize)
         self.FC_layers_2 = fc_layers_2(8, num_classes, alignsize)
 
-        self.FC_layers_3 = nn.Conv1d(
-            in_channels=1, out_channels=1, kernel_size=40, stride=39
+        # self.FC_layers_3 = nn.Conv1d(
+        #     in_channels=1, out_channels=1, kernel_size=40, stride=39
+        # )
+
+        self.FC_layers_3 = nn.Sequential(
+            nn.Linear(945, 24)
         )
 
     def forward(self, data_gaic, data_cpc):

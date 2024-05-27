@@ -18,12 +18,13 @@ from models.pre_model import build_crop_model
 
 
 def train():
-
     net.train()
+
     loss_cpc = torch.zeros(1)
     loss_gaic = torch.zeros(1)
 
     for epoch in range(0, epoch_num):
+
         total_loss = 0
         total_gaic_loss = 0
         total_cpc_loss = 0

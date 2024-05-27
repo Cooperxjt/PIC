@@ -4,8 +4,10 @@ __pycache__/
 *.pth
 other
 *.tar
-datasets/csv_total
-datasets/prior
-datasets/finetune
+datasets
 runs
 weights
+user_weights
+visual_pic.py
+crop_pic.py
+crops

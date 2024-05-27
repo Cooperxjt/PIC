@@ -319,7 +319,7 @@ if __name__ == '__main__':
     results = {}
 
     # 加载网络
-    model_dir = 'weights/pre/2024-04-23_14_21_09/130.pth'
+    model_dir = 'weights/pre/2024-03-18_10_07_19/130.pth'
 
     state_dict = torch.load(model_dir)
 
@@ -353,13 +353,13 @@ if __name__ == '__main__':
 
     print('epoch:' + str(epoch_total))
 
-    for user_name in tqdm(os.listdir('datasets/prior/total')):
+    for user_name in tqdm(os.listdir('datasets/prior/2/total')):
 
         # 对一个用户提取其图片
         user_name = user_name[:-4]
-        csv_file_train = 'datasets/prior/train/' + \
+        csv_file_train = 'datasets/prior/2/5/train/' + \
             user_name + '_train.csv'
-        csv_file_val = 'datasets/prior/val/' + \
+        csv_file_val = 'datasets/prior/2/5/val/' + \
             user_name + '_val.csv'
 
         # 用于返回图片

@@ -4,6 +4,7 @@ import os
 import random
 import warnings
 from collections import OrderedDict
+from datetime import datetime
 
 import numpy as np
 import torch
@@ -164,10 +165,10 @@ def test():
 
 
 def train():
-
     net.train()
 
     for epoch in range(0, 10):
+
         for id, sample in enumerate(data_loader_train):
 
             image = sample['image']
@@ -265,13 +266,13 @@ if __name__ == '__main__':
     total_wacc4_5 = None
     total_wacc4_10 = None
 
-    for user_name in tqdm(os.listdir('datasets/test/total')):
+    for user_name in tqdm(os.listdir('datasets/finetune/total')):
 
         # 对一个用户提取其图片
         user_name = user_name[:-4]
-        csv_file_train = 'datasets/test/5/train/' + \
+        csv_file_train = 'datasets/finetune/5/train/' + \
             user_name + '_train.csv'
-        csv_file_val = 'datasets/test/5/val/' + \
+        csv_file_val = 'datasets/finetune/5/val/' + \
             user_name + '_val.csv'
 
         data_loader_train = data.DataLoader(

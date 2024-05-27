@@ -67,7 +67,7 @@ class TransformFunction(object):
         resized_image = resized_image.transpose((2, 0, 1))
 
         # print(resized_image.shape)
-        return {'image': resized_image, 'bbox': transformed_bbox, 'MOS': MOS}
+        return {'image': resized_image, 'bbox': transformed_bbox, 'MOS': MOS, 'scale_width': scale_width, 'scale_height': scale_height}
 
 
 class CPCDataset_pic(Dataset):
@@ -118,6 +118,7 @@ class CPCDataset_pic(Dataset):
         cpc_image = self.cpc_tranform(cpc_image)
 
         sample['cpc_image'] = cpc_image
+        sample['img_name'] = img_name
 
         return sample
 
