@@ -349,7 +349,7 @@ if __name__ == '__main__':
         torch.backends.cudnn.enabled = False
         net = net.cuda()
 
-    epoch_total = 5
+    epoch_total = 20
 
     print('epoch:' + str(epoch_total))
 
