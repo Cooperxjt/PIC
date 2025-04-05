@@ -13,19 +13,19 @@ RGB_MEAN = (0.485, 0.456, 0.406)
 RGB_STD = (0.229, 0.224, 0.225)
 
 cpc_transformfunction = transforms.Compose([
-    transforms.Resize((256, 256)),  # 调整图像大小至256x256
-    transforms.RandomHorizontalFlip(),  # 随机水平翻转
-    transforms.RandomRotation(20),  # 随机旋转（-20到20度）
+    transforms.Resize((256, 256)),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(20),
     transforms.ColorJitter(
         brightness=0.2, contrast=0.2,
         saturation=0.2, hue=0.1
-    ),  # 随机调整亮度、对比度、饱和度和色调
-    transforms.RandomCrop(256, padding=8, pad_if_needed=True),  # 随机裁剪
-    transforms.ToTensor(),  # 转换成Tensor
+    ),
+    transforms.RandomCrop(256, padding=8, pad_if_needed=True),
+    transforms.ToTensor(),
     transforms.Normalize(
         mean=[0.485, 0.456, 0.406], std=[
             0.229, 0.224, 0.225]
-    )  # 标准化
+    )
 ])
 
 
@@ -75,11 +75,6 @@ class CPCDataset_pic(Dataset):
             self, csv_file, image_size=256, dataset_dir='dataset/cpc/', set='train',
             transform=TransformFunction(), augmentation=False
     ):
-        """
-        csv_file (string): 包含注释的csv文件的路径。
-        root_dir (string): 包含所有图像的目录。
-        transform (callable, optional): 可选的变换，应用于图像。
-        """
         self.annotations_frame = pd.read_csv(csv_file)
         self.image_annotations = self._group_annotations()
         self.dataset_dir = dataset_dir
@@ -102,7 +97,6 @@ class CPCDataset_pic(Dataset):
         annotations = self.image_annotations[list(
             self.image_annotations.keys())[idx]]
 
-        # 解析 bbox 和 score
         annotations_data = []
         for _, row in annotations.iterrows():
             bbox = [int(x) for x in row['bbox'].strip('[]').split(',')]
@@ -113,7 +107,6 @@ class CPCDataset_pic(Dataset):
         if self.transform:
             sample = self.transform(sample, self.image_size)
 
-        # 处理 个人特征 使用的那部分图片
         cpc_image = Image.open(img_name)
         cpc_image = self.cpc_tranform(cpc_image)
 
@@ -121,34 +114,3 @@ class CPCDataset_pic(Dataset):
         sample['img_name'] = img_name
 
         return sample
-
-
-# 使用 CustomDataset 创建 DataLoader
-
-
-# if __name__ == '__main__':
-
-#     # 请根据您的文件路径修改以下两个参数
-#     csv_file = '/home/zhangshuo/pic/datasets/finetune/3/val/A1DINOR5IK1YC4_val.csv'
-#     root_dir = '/public/datasets/CPCDataset/images'
-
-#     dataset = CPCDataset_pic(
-#         csv_file=csv_file, dataset_dir=root_dir, image_size=256
-#     )
-#     data_loader = DataLoader(
-#         dataset, batch_size=1,
-#         shuffle=True, num_workers=0
-#     )
-
-#     for i, batch in enumerate(data_loader):
-#         print(f'Batch {i+1}')
-#         print(f'Images in this batch: {len(batch["image"])}')
-#         print('Annotations for the first image:')
-#         # print(batch['bbox'])
-#         # print(batch['MOS'])
-#         # 如果您想看到每个图像的注释，可以取消注释以下行
-#         # for annotation in batch['annotations']:
-#         #     print(annotation)
-#         # 限制输出以避免太长的日志
-#         if i == 1:  # 只迭代两个批次作为示例
-#             break

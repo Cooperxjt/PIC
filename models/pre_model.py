@@ -89,7 +89,7 @@ class mobilenetv2_base(nn.Module):
 
 class shufflenetv2_base(nn.Module):
 
-    def __init__(self, loadweights=True, downsample=4, model_path='models/pretrained_model/shufflenetv2_x1_69.402_88.374.pth.tar'):
+    def __init__(self, loadweights=True, downsample=4, model_path='pretrained_model/shufflenetv2_x1_69.402_88.374.pth.tar'):
         super(shufflenetv2_base, self).__init__()
 
         model = shufflenetv2(width_mult=1.0)
@@ -144,8 +144,8 @@ def fc_layers_2(reddim=32, num_classes=1345, alignsize=8):
     )
     dropout = nn.Dropout(p=0.5)
     conv3 = nn.Conv2d(128, num_classes, kernel_size=1)
-    global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))  # 添加全局平均池化层
-    flatten = nn.Flatten()  # 将池化后的 1x1xnum_classes 张量展平
+    global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
+    flatten = nn.Flatten()
 
     layers = nn.Sequential(
         conv1, conv2, dropout, conv3,
@@ -184,7 +184,7 @@ class persionality_crop_model_multi_scale_shared(nn.Module):
     def forward(self, label, data):
         if label == 'gaic':
             # ---------------------------------------------------------#
-            # ----------------------处理 gaic 的数据--------------------#
+            # ------------------      GAIC         --------------------#
             # ---------------------------------------------------------#
             im_data_gaic = data['image_gaic']
             boxes_gaic = data['roi_gaic']
@@ -206,7 +206,7 @@ class persionality_crop_model_multi_scale_shared(nn.Module):
             return prediction_1.squeeze()
 
         # ---------------------------------------------------------#
-        # ----------------------处理 cpc 的数据---------------------#
+        # -----------------         PER        --------------------#
         # ---------------------------------------------------------#
         if label == 'cpc':
             im_data_cpc = data
@@ -265,7 +265,7 @@ class persionality_crop_model_multi_scale_shared_attention(nn.Module):
     def forward(self, label, data):
         if label == 'gaic' and self.gen == True:
             # ---------------------------------------------------------#
-            # ----------------------处理 gaic 的数据--------------------#
+            # --------------------       GEN       --------------------#
             # ---------------------------------------------------------#
             im_data_gaic = data['image_gaic']
             boxes_gaic = data['roi_gaic']
@@ -289,7 +289,7 @@ class persionality_crop_model_multi_scale_shared_attention(nn.Module):
 
         if label == 'cpc' and self.per == True:
             # ---------------------------------------------------------#
-            # ----------------------处理 cpc 的数据---------------------#
+            # -----------------         PER        --------------------#
             # ---------------------------------------------------------#
             im_data_cpc = data
 

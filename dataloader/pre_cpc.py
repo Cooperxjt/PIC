@@ -37,24 +37,19 @@ class CPC(Dataset):
 
 
 def main():
-    # 图片转换处理
     transform = torchvision.transforms.Compose([
         torchvision.transforms.Resize((256, 256)),
         torchvision.transforms.ToTensor(),
     ])
 
-    # 创建数据集
-    dataset = CPC(
-        main_dir="/public/datasets/CPCDataset/process/user_best_images", transform=transform)
+    dataset = CPC(main_dir="", transform=transform)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
 
-    # 模拟训练循环
-    for epoch in range(2):  # 假设训练2个epoch
+    for epoch in range(2):
         for i, (images, labels) in enumerate(dataloader):
             print(
                 f"Epoch: {epoch}, Batch: {i}, Image shape: {images.shape}, Labels: {labels}")
             break
-        # 在这里添加模型训练代码
 
 
 if __name__ == "__main__":

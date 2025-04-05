@@ -31,12 +31,11 @@ def train():
 
         bs_id = 0
 
-        # 创建迭代器
         iterator_cpc = iter(data_loader_train_cpc)
 
         for sample_gaic in data_loader_train_gaic:
             # ---------------------------------------------------------#
-            # ----------------------处理 gaic 的数据--------------------#
+            # --------------------       GEN       --------------------#
             # ---------------------------------------------------------#
             if gen == True:
 
@@ -77,19 +76,17 @@ def train():
                     'gaic', input_data
                 )
 
-                # loss_gaic 的通用裁剪 loss这里采用 SL1 loss。
                 loss_gaic = torch.nn.SmoothL1Loss(reduction='mean')(
                     out_gaic, MOS_gaic
                 )
 
             # ---------------------------------------------------------#
-            # ----------------------处理 cpc 的数据---------------------#
+            # ----------------------      PER     ---------------------#
             # ---------------------------------------------------------#
             if per == True:
                 try:
                     sample_cpc = next(iterator_cpc)
                 except StopIteration:
-                    # 重启CPC迭代器
                     iterator_cpc = iter(data_loader_train_cpc)
                     sample_cpc = next(iterator_cpc)
 
@@ -103,7 +100,6 @@ def train():
                 total_cpc_loss += loss_gaic.item()
                 total_gaic_loss += loss_cpc.item()
 
-            # 计算全部的 loss
             loss = loss_gaic + loss_cpc
 
             total_loss += loss.item()
@@ -114,7 +110,6 @@ def train():
 
             bs_id += 1
 
-            # 记录loss的变化
             writer.add_scalar('Loss/GAIC', loss_gaic.item(),
                               epoch * len(data_loader_train_gaic) + bs_id)
             writer.add_scalar('Loss/CPC', loss_cpc.item(),
@@ -153,7 +148,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         description='Grid anchor based image cropping')
-    parser.add_argument('--dataset_root', default='/home/zhangshuo/datasets/GAIC_2/',
+    parser.add_argument('--dataset_root', default='',
                         help='Dataset root directory path')
     parser.add_argument('--base_model', default='mobilenetv2',
                         help='Pretrained base model')
@@ -182,11 +177,11 @@ if __name__ == '__main__':
     parser.add_argument('--save_folder', default='weights/pre/',
                         help='Directory for saving checkpoint models')
     parser.add_argument('--gen', default=True,
-                        help='是否开启通用分支')
+                        help='Whether to enable generic branching')
     parser.add_argument('--per', default=True,
-                        help='是否开启个性化分支')
+                        help='Whether to enable personalised branching')
     parser.add_argument('--attention', default=True,
-                        help='是否开启注意力机制')
+                        help='Whether or not to switch on the attention mechanism')
     args = parser.parse_args()
 
     timestamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
@@ -222,25 +217,24 @@ if __name__ == '__main__':
         generator=torch.Generator(device='cuda')
     )
 
-    # 图片预处理
     transform = transforms.Compose([
-        transforms.Resize((256, 256)),  # 调整图像大小至256x256
-        transforms.RandomHorizontalFlip(),  # 随机水平翻转
-        transforms.RandomRotation(20),  # 随机旋转（-20到20度）
+        transforms.Resize((256, 256)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(20),
         transforms.ColorJitter(
             brightness=0.2, contrast=0.2,
             saturation=0.2, hue=0.1
-        ),  # 随机调整亮度、对比度、饱和度和色调
-        transforms.RandomCrop(256, padding=8, pad_if_needed=True),  # 随机裁剪
-        transforms.ToTensor(),  # 转换成Tensor
+        ),
+        transforms.RandomCrop(256, padding=8, pad_if_needed=True),
+        transforms.ToTensor(),
         transforms.Normalize(
             mean=[0.485, 0.456, 0.406], std=[
                 0.229, 0.224, 0.225]
-        )  # 标准化
+        )
     ])
 
     cpc_dataset = CPC(
-        main_dir='/home/zhangshuo/datasets/CPCDataset/process/user_best_images/train',
+        main_dir='',
         transform=transform
     )
 
@@ -283,7 +277,6 @@ if __name__ == '__main__':
 
     optimizer = optim.Adam(net.parameters(), lr=args.lr)
 
-    # 创建TensorBoard写入器
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     log_dir = os.path.join('runs/cpc_best', timestamp)
     writer = SummaryWriter(log_dir)
