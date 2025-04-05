@@ -1,0 +1,13 @@
+.git
+__pycache__/
+*.pyc
+*.pth
+other
+*.tar
+datasets
+runs
+weights
+user_weights
+visual_pic.py
+crop_pic.py
+crops
