@@ -320,7 +320,6 @@ class persionality_crop_model_multi_scale_shared(nn.Module):
         red_feat = self.DimRed(cat_feat)
 
         prediction_2 = self.FC_layers_2(red_feat)
-        # 降低维度到 24
         prediction_3 = self.FC_layers_3(
             prediction_2.squeeze().unsqueeze(0).unsqueeze(0)
         )
@@ -387,7 +386,6 @@ class persionality_attention_visual(nn.Module):
 
         prediction_2 = self.FC_layers_2(red_feat)
 
-        # 降低维度到 24
         prediction_3 = self.FC_layers_3(
             prediction_2.squeeze().unsqueeze(0)
         )

@@ -10,7 +10,6 @@ esp = 1e-8
 
 
 class Fidelity_Loss(torch.nn.Module):
-    # 计算一对数之间的 loss
     def __init__(self):
         super(Fidelity_Loss, self).__init__()
 
@@ -75,8 +74,6 @@ def loss_m(y_pred, y):
     preds = y_pred-y_pred.t()
     gts = y - y.t()
 
-    # signed = torch.sign(gts)
-    # 返回上三角矩阵的行列坐标，一共两行，第一行位行坐标，第二行为列坐标
     triu_indices = torch.triu_indices(y_pred.size(0), y_pred.size(0), offset=1)
     preds = preds[triu_indices[0], triu_indices[1]]
     gts = gts[triu_indices[0], triu_indices[1]]
