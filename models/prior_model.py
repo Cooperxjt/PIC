@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.init as init
 import torchvision.models as models
-from fightingcv_attention.attention.DANet import DAModule
+
+from models.two_stream import TwoStream
 
 from models.pretrained_model.mobilenetv2 import MobileNetV2
 from models.pretrained_model.ShuffleNetV2 import shufflenetv2
