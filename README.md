@@ -41,6 +41,38 @@ pic
 
 ```
 
+
+## Environment
+
+python 3.9, pytorch 1.10.1, numpy, cv2, scipy.
+
+We use the RoI and RoD libraries, see [GAIC](https://github.com/lld533/Grid-Anchor-based-Image-Cropping-Pytorch.git) for the installation process.
+
+## Dataset
+
+A collated CPC dataset with personalized tags will be available at a later date.
+
+## Usage
+
+1. Ensure that roi_align_api and rod_align_api are installed along with other necessary environments.
+2. Run pre_pic to train a pre_model containing both objective and subjective features of the image.
+
+```
+python prior_pic.py
+```
+
+3. Run prior_pic and integrate the two types of features to get the prior model.
+
+```
+python pre_pic.py
+```
+
+4. Run finetune_pic to get a personalized model for a specific user using a small number of images of the user.
+
+```
+python finetune_pic.py
+```
+
 ## Results
 
 In the following figure, we give the results of our experiments for three different users, as well as the cropping results for several generic cropping methods. We can observe the differences in cropping preferences across users, and our model successfully identifies and analyzes the individual user preferences. For example, User 1 pays less attention to people, which is reflected in the first and fourth rows, he/she cuts the edges of people, and in the last row, the people are placed in a smaller area. Our model produces crops with more attention to the scenery and diminished emphasis on the person. Moreover, it is shown that User 2 and User 3 exhibit similar cropping preferences, as evidenced by the crops in the first row. More specifically, User 2 prefers the center composition, as observed in the third and fourth rows, the people are placed in the center of the image. User 3 seems to favor the composition of the Rule of Thirds, as seen in the fourth row. As a result, the PIC models offer similar content attention while offering varied options in compositional styles. On the other hand, although the two GIC methods can provide good generic cropping results, it is clear that they are difficult to satisfy the preferences of different users. This further proves the necessity of the PIC task and the effectiveness of our proposed PIC model.
